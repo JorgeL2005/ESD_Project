@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Login | Votación Segura</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Sistema de Votación Digital Segura</h1>
+    <div class="card">
+      <h2>Login</h2>
+      <form id="loginForm">
+        <label>Usuario</label>
+        <input type="text" id="loginUsername" required />
+        <label>Contraseña</label>
+        <input type="password" id="loginPassword" required />
+        <button type="submit">Ingresar</button>
+      </form>
+      <p id="loginMsg" class="msg"></p>
+    </div>
+
+    <div class="card">
+      <h2>Registro</h2>
+      <form id="registerForm">
+        <label>Usuario</label>
+        <input type="text" id="regUsername" required />
+        <label>Contraseña</label>
+        <input type="password" id="regPassword" required />
+        <label>Rol</label>
+        <select id="regRole">
+          <option value="voter" selected>Votante</option>
+          <option value="auditor">Auditor</option>
+          <option value="admin">Administrador</option>
+        </select>
+        <button type="submit">Registrar</button>
+      </form>
+      <p id="regMsg" class="msg"></p>
+      <textarea id="regPrivateKey" rows="8" placeholder="Clave privada generada (guárdela)"></textarea>
+    </div>
+  </div>
+
+  <script src="/static/js/util.js"></script>
+  <script src="/static/js/auth.js"></script>
+</body>
+</html>

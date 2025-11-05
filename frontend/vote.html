@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Emitir Voto</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Emitir Voto</h1>
+    <div class="card">
+      <p>Usuario: <span id="userLabel"></span> | Rol: <span id="roleLabel"></span></p>
+      <label>Clave privada (PKCS8 PEM) del usuario</label>
+      <textarea id="userPrivatePem" rows="6" placeholder="Pegue su clave privada PEM"></textarea>
+      <label>Voto</label>
+      <input type="text" id="voteInput" placeholder="Ej: Candidato A" />
+      <button id="sendVote">Enviar voto cifrado y firmado</button>
+      <p id="voteMsg" class="msg"></p>
+    </div>
+  </div>
+  <script src="/static/js/util.js"></script>
+  <script src="/static/js/vote.js"></script>
+</body>
+</html>

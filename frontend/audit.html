@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Auditoría de Ledger</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Ledger de Votos (Hashes)</h1>
+    <div class="card">
+      <p>Usuario: <span id="userLabel"></span> | Rol: <span id="roleLabel"></span></p>
+      <div>
+        <label>Página</label>
+        <input type="number" id="pageInput" value="1" min="1" />
+        <label>Tamaño</label>
+        <input type="number" id="pageSizeInput" value="10" min="1" />
+        <button id="loadLedger">Cargar</button>
+      </div>
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Hash</th><th>PrevHash</th><th>Timestamp</th></tr>
+        </thead>
+        <tbody id="ledgerBody"></tbody>
+      </table>
+      <p id="auditMsg" class="msg"></p>
+    </div>
+  </div>
+  <script src="/static/js/util.js"></script>
+  <script src="/static/js/audit.js"></script>
+</body>
+</html>

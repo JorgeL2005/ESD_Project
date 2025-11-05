@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Resultados (Admin)</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Resultados Descifrados</h1>
+    <div class="card">
+      <p>Usuario: <span id="userLabel"></span> | Rol: <span id="roleLabel"></span></p>
+      <div style="margin-bottom:10px">
+        <a href="/static/admin.html">Resultados</a> |
+        <a href="/static/admin_logs.html">Logs</a> |
+        <a href="/static/admin_sql.html">SQL Viewer</a>
+      </div>
+      <button id="loadResults">Cargar resultados</button>
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Hash</th><th>Voto</th><th>Timestamp</th></tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+      </table>
+      <p id="adminMsg" class="msg"></p>
+    </div>
+  </div>
+  <script src="/static/js/util.js"></script>
+  <script src="/static/js/admin.js"></script>
+</body>
+</html>

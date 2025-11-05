@@ -1,0 +1,11 @@
+body { font-family: system-ui, Arial, sans-serif; background: #f5f6f8; margin: 0; }
+.container { max-width: 900px; margin: 24px auto; padding: 0 16px; }
+h1 { font-size: 22px; }
+.card { background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin: 16px 0; }
+label { display: block; margin-top: 8px; }
+input, select, textarea { width: 100%; padding: 8px; margin: 6px 0 10px; }
+button { padding: 10px 14px; background: #2563eb; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
+button:hover { background: #1e40af; }
+table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+th, td { border: 1px solid #ddd; padding: 8px; font-size: 14px; }
+.msg { color: #0f172a; font-size: 13px; }

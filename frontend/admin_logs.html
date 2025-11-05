@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Logs (Admin)</title>
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Logs de Auditoría</h1>
+    <div class="card">
+      <p>Usuario: <span id="userLabel"></span> | Rol: <span id="roleLabel"></span></p>
+      <div style="margin-bottom:10px">
+        <a href="/static/admin.html">Resultados</a> |
+        <a href="/static/admin_logs.html">Logs</a> |
+        <a href="/static/admin_sql.html">SQL Viewer</a>
+      </div>
+      <div>
+        <label>Página</label>
+        <input type="number" id="pageInput" value="1" min="1" />
+        <label>Tamaño</label>
+        <input type="number" id="pageSizeInput" value="10" min="1" />
+        <button id="loadLogs">Cargar</button>
+      </div>
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Usuario</th><th>Acción</th><th>IP</th><th>Timestamp</th></tr>
+        </thead>
+        <tbody id="logsBody"></tbody>
+      </table>
+      <p id="logsMsg" class="msg"></p>
+    </div>
+  </div>
+  <script src="/static/js/util.js"></script>
+  <script src="/static/js/admin_logs.js"></script>
+</body>
+</html>
