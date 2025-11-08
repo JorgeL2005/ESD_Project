@@ -187,4 +187,4 @@
 
 ---
 
-Este informe documenta el estado de la Entrega 1, cubriendo implementación, seguridad, riesgos y plan de mejora. Se recomienda integrarlo a GitHub Pages o Notion para su presentación y seguimiento.
+Este informe documenta el estado de la Entrega 1, cubriendo implementación, seguridad, riesgos y plan de mejora. 
