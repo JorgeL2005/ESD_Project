@@ -28,6 +28,18 @@ class Vote(Base):
     prev_hash_hex = Column(String(64), nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
+class BallotToken(Base):
+    __tablename__ = "ballot_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    jti = Column(String(128), unique=True, index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_public_key_pem = Column(Text, nullable=False)
+    issued_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)
+    used = Column(Boolean, default=False)
+    used_at = Column(DateTime, nullable=True)
+
 class Candidate(Base):
     __tablename__ = "candidates"
 

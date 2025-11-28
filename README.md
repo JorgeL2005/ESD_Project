@@ -188,3 +188,42 @@
 ---
 
 Este informe documenta el estado de la Entrega 1, cubriendo implementación, seguridad, riesgos y plan de mejora. 
+
+## Entrega 2: Cambios y Justificación
+
+### Anonimato y anti-spoofing
+- Se añade emisión de token de boleta de un solo uso (`POST /auth/issue-ballot`), un JWT con `typ=ballot` y `jti` aleatorio, sin `sub`.
+- El token incluye (en base de datos) la clave pública del usuario para verificar la firma del voto sin cargar la identidad durante el envío.
+- `POST /vote` admite `X-Ballot-Token` y verifica la firma sobre el ciphertext con la clave pública asociada al token. Se marca el `jti` como usado (anti-replay) y se registra auditoría.
+- Modelo de anonimato: los votos se almacenan sin `user_id`. La emisión del token requiere autenticación, pero el acto de voto queda desacoplado del `sub` del JWT. Esto brinda unlinkability en almacenamiento y reduce el rastro de identidad en el momento de votar.
+
+### Ledger: integridad, no PoW
+- El ledger implementa una cadena de hashes (append-only hash chain) para detectar alteraciones. No es prueba de trabajo (PoW) ni pretende serlo.
+- Se añade endpoint de agregados `GET /results/summary` para evitar inspección voto a voto y facilitar auditoría a gran escala.
+
+### Funcionalidad y UX
+- Auditoría: `audit.js` ahora consume `results/summary` y renderiza gráficos agregados.
+- Votación: `vote.js` solicita automáticamente el token de boleta y lo usa en el envío del voto.
+
+### Backups y DRP
+- Se incorpora `scripts/backup.py` que crea respaldos de `data/`, `keys/` y `secrets/` con verificación SHA-256 y retención por timestamp.
+
+### Análisis de seguridad
+- Script `reports/generate_reports.ps1` para generar:
+  - Reporte SAST con Bandit (`reports/bandit.html`).
+  - Auditoría de dependencias con Safety (`reports/dependencies.txt`).
+  - Plantilla para ZAP Baseline Scan (`reports/zap.md`).
+
+### Endpoints nuevos
+- `POST /auth/issue-ballot`: emite token de boleta (votante autenticado, un uso, con expiración).
+- `GET /results/summary`: devuelve conteos y porcentajes por candidato (auditor/admin).
+
+### Consideraciones de seguridad
+- Anti-replay por `jti` de token y marca `used`.
+- Tolerancia a correlación temporal: documentar ventanas de emisión/uso y anonimizar timestamps en reportes públicos.
+- Recomendación: TLS obligatorio en despliegues reales y protección del almacenamiento de claves del sistema.
+
+### Cómo usar (resumen)
+- Iniciar sesión como votante y obtener token de boleta (`/auth/issue-ballot`).
+- Enviar el voto con encabezado `X-Ballot-Token` y firma del ciphertext.
+- Auditar resultados agregados en `GET /results/summary` (auditor/admin) y gráficos en el frontend.

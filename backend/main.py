@@ -4,14 +4,16 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from typing import List
 from typing import Optional
+from datetime import datetime
 import os
 import base64
 
 from backend.database import init_db, SessionLocal
-from .auth import router as auth_router, get_current_user
-from backend.models import User, Vote, AuditLog, Candidate
-from backend.schemas import CandidateOption,VoteRequest, LedgerPage, VoteLedgerItem
+from .auth import router as auth_router, get_current_user, SECRET_KEY, ALGORITHM
+from backend.models import User, Vote, AuditLog, Candidate, BallotToken
+from backend.schemas import CandidateOption,VoteRequest, LedgerPage, VoteLedgerItem, ResultSummaryResponse, ResultSummaryItem
 from backend.crypto_utils import ensure_system_keys, load_system_public_key_pem, verify_signature, sha256_hex, decrypt_with_system_private
+from jose import jwt
 
 
 app = FastAPI(title="Sistema de Votación Digital Segura")
@@ -90,16 +92,41 @@ def submit_vote(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    # Obtener token
+    # Se admite Authorization (flujo actual) o X-Ballot-Token (flujo anonimizado)
     authorization = request.headers.get("authorization")
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token requerido")
-    token = authorization.split(" ", 1)[1]
-    current_user = get_current_user(token, db)
-    require_role(current_user, {"voter"})
+    ballot_hdr = request.headers.get("x-ballot-token")
 
-    if current_user.has_voted:
-        raise HTTPException(status_code=400, detail="El usuario ya emitió su voto")
+    user_for_logging = None
+    public_key_pem_for_verify = None
+
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1]
+        current_user = get_current_user(token, db)
+        require_role(current_user, {"voter"})
+        if current_user.has_voted:
+            raise HTTPException(status_code=400, detail="El usuario ya emitió su voto")
+        user_for_logging = current_user
+        public_key_pem_for_verify = current_user.public_key_pem
+    elif ballot_hdr:
+        # Validar ballot token (firma y expiración) y buscar BallotToken
+        try:
+            payload = jwt.decode(ballot_hdr, SECRET_KEY, algorithms=[ALGORITHM])
+        except Exception:
+            raise HTTPException(status_code=400, detail="Ballot token inválido o expirado")
+        if payload.get("typ") != "ballot":
+            raise HTTPException(status_code=400, detail="Tipo de token inválido")
+        jti = payload.get("jti")
+        bt = db.query(BallotToken).filter(BallotToken.jti == jti).first()
+        if not bt:
+            raise HTTPException(status_code=400, detail="Ballot token no encontrado")
+        if bt.used:
+            raise HTTPException(status_code=400, detail="Ballot token ya usado")
+        if bt.expires_at and bt.expires_at < datetime.utcnow():
+            raise HTTPException(status_code=400, detail="Ballot token expirado")
+        public_key_pem_for_verify = bt.user_public_key_pem
+        user_for_logging = db.query(User).get(bt.user_id)
+    else:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Falta Authorization o X-Ballot-Token")
 
     try:
         ciphertext = base64.b64decode(req.encrypted_vote_b64)
@@ -108,7 +135,7 @@ def submit_vote(
         raise HTTPException(status_code=400, detail="Formato Base64 inválido")
 
     # Verificar firma sobre el ciphertext para autenticidad
-    if not verify_signature(current_user.public_key_pem, ciphertext, signature):
+    if not verify_signature(public_key_pem_for_verify, ciphertext, signature):
         raise HTTPException(status_code=400, detail="Firma inválida")
 
     # Hash del voto (del ciphertext) para el ledger
@@ -123,8 +150,16 @@ def submit_vote(
         prev_hash_hex=prev_hash,
     )
     db.add(record)
-    current_user.has_voted = True
-    db.add(AuditLog(user_id=current_user.id, action="vote_submitted", ip=request.client.host))
+    if ballot_hdr:
+        bt.used = True
+        bt.used_at = datetime.utcnow()
+        if user_for_logging:
+            user_for_logging.has_voted = True
+        db.add(AuditLog(user_id=user_for_logging.id if user_for_logging else None, action="vote_submitted_token", ip=request.client.host))
+    else:
+        if user_for_logging:
+            user_for_logging.has_voted = True
+        db.add(AuditLog(user_id=user_for_logging.id if user_for_logging else None, action="vote_submitted", ip=request.client.host))
     db.commit()
 
     return {"message": "Voto registrado", "vote_hash_hex": vote_hash}
@@ -198,6 +233,31 @@ def audit_results(request: Request, db: Session = Depends(get_db)):
         counts[plaintext] = counts.get(plaintext, 0) + 1
 
     return {"counts": counts}
+
+@app.get("/results/summary", response_model=ResultSummaryResponse)
+def results_summary(request: Request, db: Session = Depends(get_db)):
+    authorization = request.headers.get("authorization")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Token requerido")
+    token = authorization.split(" ", 1)[1]
+    current_user = get_current_user(token, db)
+    require_role(current_user, {"auditor", "admin"})
+
+    votes = db.query(Vote).all()
+    counts: dict[str, int] = {}
+    for v in votes:
+        try:
+            plaintext = decrypt_with_system_private(base64.b64decode(v.encrypted_vote_b64)).decode()
+        except Exception:
+            plaintext = "<invalid>"
+        counts[plaintext] = counts.get(plaintext, 0) + 1
+
+    total = sum(counts.values())
+    results = []
+    for cand, cnt in counts.items():
+        perc = (cnt / total * 100.0) if total else 0.0
+        results.append(ResultSummaryItem(candidate=cand, vote_count=cnt, percentage=round(perc, 3)))
+    return ResultSummaryResponse(total_votes=total, results=results)
 
 
 

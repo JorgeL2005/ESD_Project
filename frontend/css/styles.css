@@ -9,3 +9,5 @@ button:hover { background: #1e40af; }
 table { width: 100%; border-collapse: collapse; margin-top: 10px; }
 th, td { border: 1px solid #ddd; padding: 8px; font-size: 14px; }
 .msg { color: #0f172a; font-size: 13px; }
+.chart-container { display: flex; justify-content: center; align-items: center; margin: 16px auto; max-width: 520px; height: 360px; }
+.table-scroll { max-height: 60vh; overflow-y: auto; overflow-x: auto; }

@@ -5,19 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Auditoría de Ledger</title>
   <link rel="stylesheet" href="/static/css/styles.css" />
-
-  <h2>Auditoría del Sistema</h2>
-<button id="verifyLedger">Verificar integridad del ledger</button>
-<p id="verifyMsg"></p>
-
-<h3>Distribución de votos</h3>
-<div style="width: 300px; height: 300px;">
-    <canvas id="votesChart"></canvas>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-
 </head>
 <body>
   <div class="container">
@@ -31,6 +18,13 @@
         <input type="number" id="pageSizeInput" value="10" min="1" />
         <button id="loadLedger">Cargar</button>
       </div>
+      <h2>Auditoría del Sistema</h2>
+      <button id="verifyLedger">Verificar integridad del ledger</button>
+      <p id="verifyMsg"></p>
+      <h3>Distribución de votos</h3>
+      <div class="chart-container">
+        <canvas id="votesChart"></canvas>
+      </div>
       <table>
         <thead>
           <tr><th>ID</th><th>Hash</th><th>PrevHash</th><th>Timestamp</th></tr>
@@ -40,6 +34,7 @@
       <p id="auditMsg" class="msg"></p>
     </div>
   </div>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="/static/js/util.js"></script>
   <script src="/static/js/audit.js"></script>
 </body>

@@ -70,14 +70,12 @@ async function loadVoteResults() {
   if (!token) return;
 
   try {
-    const res = await fetch('/audit/results', {
+    const res = await fetch('/results/summary', {
       headers: { 'Authorization': 'Bearer ' + token }
     });
     const data = await res.json();
-    const counts = data.counts;
-
-    const labels = Object.keys(counts);
-    const values = Object.values(counts);
+    const labels = data.results.map(r => r.candidate);
+    const values = data.results.map(r => r.vote_count);
 
     const ctx = document.getElementById('votesChart').getContext('2d');
     new Chart(ctx, {

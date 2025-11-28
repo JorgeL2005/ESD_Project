@@ -6,7 +6,8 @@ from jose.exceptions import JWTError
 from datetime import datetime, timedelta
 from .database import SessionLocal
 from .models import User, AuditLog
-from .schemas import RegisterRequest, RegisterResponse, LoginRequest, TokenResponse
+from .schemas import RegisterRequest, RegisterResponse, LoginRequest, TokenResponse, BallotIssueResponse
+from .models import BallotToken
 from .crypto_utils import generate_user_keypair_pem
 import os
 
@@ -34,6 +35,7 @@ with open(SECRET_FILE, "r", encoding="utf-8") as f:
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 8
+BALLOT_TOKEN_EXPIRE_MINUTES = 30
 
 
 def get_db():
@@ -57,6 +59,14 @@ def create_access_token(data: dict, expires_delta: timedelta | None = None):
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+
+def create_ballot_token(jti: str, expires_minutes: int = BALLOT_TOKEN_EXPIRE_MINUTES):
+    payload = {
+        "jti": jti,
+        "typ": "ballot",
+        "exp": datetime.utcnow() + timedelta(minutes=expires_minutes),
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
 @router.post("/register", response_model=RegisterResponse)
@@ -121,3 +131,33 @@ def me(request: Request, db: Session = Depends(get_db)):
     token = authorization.split(" ", 1)[1]
     user = get_current_user(token, db)
     return {"username": user.username, "role": user.role}
+
+@router.post("/issue-ballot", response_model=BallotIssueResponse)
+def issue_ballot(request: Request, db: Session = Depends(get_db)):
+    authorization = request.headers.get("authorization")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token requerido")
+    token = authorization.split(" ", 1)[1]
+    user = get_current_user(token, db)
+    if user.role != "voter":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo votantes pueden solicitar boleta")
+    if user.has_voted:
+        raise HTTPException(status_code=400, detail="El usuario ya emitió su voto")
+
+    # Generar jti aleatorio y token de boleta
+    jti = os.urandom(16).hex()
+    expires_at = datetime.utcnow() + timedelta(minutes=BALLOT_TOKEN_EXPIRE_MINUTES)
+    ballot_jwt = create_ballot_token(jti)
+
+    # Persistir BallotToken (incluye la clave pública para verificación sin cargar el usuario)
+    bt = BallotToken(
+        jti=jti,
+        user_id=user.id,
+        user_public_key_pem=user.public_key_pem,
+        expires_at=expires_at,
+    )
+    db.add(bt)
+    db.add(AuditLog(user_id=user.id, action="ballot_issued", ip=request.client.host))
+    db.commit()
+
+    return BallotIssueResponse(ballot_token=ballot_jwt, jti=jti, expires_at=expires_at)

@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const regMsg = document.getElementById('regMsg');
   const regPrivateKey = document.getElementById('regPrivateKey');
 
-  loginForm.addEventListener('submit', async (e) => {
+  if (loginForm) loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     loginMsg.textContent = '';
     try {
@@ -15,8 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
-      if (!res.ok) { throw new Error('Login inválido'); }
       const data = await res.json();
+      if (!res.ok) { throw new Error(data.detail || 'Login inválido'); }
       // Guardar token y consultar /auth/me para obtener el rol
       saveToken(data.access_token, username, 'unknown');
       const meRes = await fetch('/auth/me', { headers: { 'Authorization': 'Bearer ' + data.access_token } });
@@ -39,10 +39,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  registerForm.addEventListener('submit', async (e) => {
+  if (registerForm) registerForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     regMsg.textContent = '';
-    regPrivateKey.value = '';
+    if (regPrivateKey) regPrivateKey.value = '';
     try {
       const username = document.getElementById('regUsername').value;
       const password = document.getElementById('regPassword').value;
@@ -54,7 +54,37 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = await res.json();
       if (!res.ok) { throw new Error(data.detail || 'Error al registrar'); }
       regMsg.textContent = data.message + ' Copie y guarde su clave privada.';
-      regPrivateKey.value = data.private_key_pem;
+      if (regPrivateKey) regPrivateKey.value = data.private_key_pem;
+      const blob = new Blob([data.private_key_pem], { type: 'application/x-pem-file' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${data.username || 'private'}_key.pem`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      const loginRes = await fetch('/auth/login', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const loginData = await loginRes.json();
+      if (!loginRes.ok) { throw new Error(loginData.detail || 'Error tras registro'); }
+      saveToken(loginData.access_token, username, 'unknown');
+      const meRes = await fetch('/auth/me', { headers: { 'Authorization': 'Bearer ' + loginData.access_token } });
+      const meData = await meRes.json();
+      if (meRes.ok && meData.role) {
+        saveToken(loginData.access_token, meData.username || username, meData.role);
+      }
+      const finalRole = getRole();
+      if (finalRole === 'admin') {
+        window.location.href = '/static/admin.html';
+      } else if (finalRole === 'auditor') {
+        window.location.href = '/static/audit.html';
+      } else {
+        window.location.href = '/static/vote.html';
+      }
     } catch (err) {
       regMsg.textContent = err.message;
     }

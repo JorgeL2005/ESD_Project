@@ -94,3 +94,8 @@ class ResultSummaryItem(BaseModel):
 class ResultSummaryResponse(BaseModel):
     total_votes: int
     results: List[ResultSummaryItem]
+
+class BallotIssueResponse(BaseModel):
+    ballot_token: str
+    jti: str
+    expires_at: datetime

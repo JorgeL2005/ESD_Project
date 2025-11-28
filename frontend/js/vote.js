@@ -49,6 +49,11 @@ await loadCandidates();
     if (!privPem) { voteMsg.textContent = 'Pegue su clave privada'; return; }
 
     try {
+      // Solicitar token de boleta de un solo uso
+      const issueRes = await fetch('/auth/issue-ballot', { headers: { 'Authorization': 'Bearer ' + token }, method: 'POST' });
+      const issueData = await issueRes.json();
+      if (!issueRes.ok) throw new Error(issueData.detail || 'No se pudo obtener token de boleta');
+
       const publicKey = await importSystemPublicKey(systemPubPem);
       const encrypted_b64 = await encryptWithSystemPublicKey(publicKey, vote);
       // Firma sobre el ciphertext (bytes)
@@ -57,7 +62,7 @@ await loadCandidates();
       const signature_b64 = await signData(privateKey, ciphertextBytes);
 
       const res = await fetch('/vote', {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Ballot-Token': issueData.ballot_token },
         body: JSON.stringify({ encrypted_vote_b64: encrypted_b64, signature_b64 })
       });
       const data = await res.json();
