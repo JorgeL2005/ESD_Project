@@ -12,8 +12,8 @@ CERTS_DIR = os.path.join(os.getcwd(), "certs")
 os.makedirs(KEYS_DIR, exist_ok=True)
 os.makedirs(CERTS_DIR, exist_ok=True)
 
-SYSTEM_PRIV = os.path.join(KEYS_DIR, "system_private.pem")
-SYSTEM_PUB = os.path.join(KEYS_DIR, "system_public.pem")
+SYSTEM_PRIV = os.path.join(KEYS_DIR, "system_private.txt")
+SYSTEM_PUB = os.path.join(KEYS_DIR, "system_public.txt")
 
 
 def sha256_hex(data: bytes) -> str:
