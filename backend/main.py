@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException, status, Request
+# Asegúrate de incluir 'File' y 'UploadFile' en esta línea
+from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -14,6 +15,12 @@ from backend.models import User, Vote, AuditLog, Candidate, BallotToken
 from backend.schemas import CandidateOption,VoteRequest, LedgerPage, VoteLedgerItem, ResultSummaryResponse, ResultSummaryItem
 from backend.crypto_utils import ensure_system_keys, load_system_public_key_pem, verify_signature, sha256_hex, decrypt_with_system_private
 from jose import jwt
+
+
+import cv2
+from deepface import DeepFace
+import numpy as np
+
 
 
 app = FastAPI(title="Sistema de Votación Digital Segura")
@@ -335,3 +342,54 @@ def admin_sql(req: SQLQuery, request: Request, db: Session = Depends(get_db)):
         cols = list(result.keys())
         rows = [list(row) for row in result.fetchall()[:200]]
     return SQLResult(columns=cols, rows=rows)
+
+
+
+
+@app.post("/verify-identity")
+def verify_identity(
+    dni_image: UploadFile = File(...),
+    selfie_image: UploadFile = File(...)
+):
+    try:
+        dni_bytes = dni_image.file.read()
+        selfie_bytes = selfie_image.file.read()
+
+        nparr_dni = np.frombuffer(dni_bytes, np.uint8)
+        nparr_selfie = np.frombuffer(selfie_bytes, np.uint8)
+
+        img_dni = cv2.imdecode(nparr_dni, cv2.IMREAD_COLOR)
+        img_selfie = cv2.imdecode(nparr_selfie, cv2.IMREAD_COLOR)
+
+        # Validación básica: verificar que las imágenes se decodificaron bien
+        if img_dni is None or img_selfie is None:
+            raise HTTPException(status_code=400, detail="No se pudo procesar una de las imágenes. Asegúrate de que sean JPG o PNG válidos.")
+
+        # 3. Usar DeepFace para verificar
+        # enforce_detection=False permite que corra aunque la cara no sea perfecta, 
+        # pero es mejor ponerlo en True para seguridad (exige encontrar cara).
+        # model_name="VGG-Face" es el modelo por defecto, balanceado y bueno.
+        result = DeepFace.verify(
+            img1_path=img_dni, 
+            img2_path=img_selfie, 
+            model_name="VGG-Face",
+            enforce_detection=True 
+        )
+
+        # 4. Interpretar el resultado
+        # DeepFace devuelve un diccionario con 'verified': True/False
+        is_match = result["verified"]
+        distance = result["distance"] # Cuanto más bajo, más parecidos
+
+        return {
+            "verified": is_match,
+            "confidence_score": round(1 - distance, 4), # Score aproximado de similitud
+            "message": "Identidad verificada" if is_match else "Las fotos no coinciden"
+        }
+
+    except ValueError as ve:
+        # DeepFace lanza ValueError si no encuentra caras y enforce_detection=True
+        raise HTTPException(status_code=400, detail="No se detectó ningún rostro en una de las imágenes.")
+    except Exception as e:
+        print(f"Error interno: {e}") # Útil para ver el error en la consola
+        raise HTTPException(status_code=500, detail="Error procesando la verificación biométrica")

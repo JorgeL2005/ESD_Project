@@ -5,6 +5,51 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Registro | Votación Segura</title>
   <link rel="stylesheet" href="/static/css/styles.css" />
+  <style>
+    /* Estilos específicos para la sección biométrica */
+    .biometric-section {
+      background-color: #f8f9fa;
+      border: 1px solid #e9ecef;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 15px 0;
+    }
+    .preview-box {
+      display: flex;
+      gap: 10px;
+      margin-top: 10px;
+      justify-content: center;
+    }
+    .preview-img {
+      width: 100px;
+      height: 100px;
+      object-fit: cover;
+      border-radius: 5px;
+      border: 2px solid #ddd;
+      display: none; /* Oculto hasta que se suba foto */
+      background-color: #eee;
+    }
+    .status-msg {
+      font-size: 0.9em;
+      margin-top: 5px;
+      font-weight: bold;
+      text-align: center;
+    }
+    .success { color: #28a745; }
+    .error { color: #dc3545; }
+    
+    /* Botón de verificar (distinto al de registrar) */
+    .btn-verify {
+      background-color: #17a2b8;
+      margin-top: 10px;
+      width: 100%;
+    }
+    /* El botón de registro empieza desactivado */
+    button:disabled {
+      background-color: #cccccc !important;
+      cursor: not-allowed;
+    }
+  </style>
 </head>
 <body>
   <div class="container">
@@ -13,23 +58,144 @@
       <form id="registerForm">
         <label>Usuario</label>
         <input type="text" id="regUsername" required />
+        
         <label>Contraseña</label>
         <input type="password" id="regPassword" required />
+        
         <label>Rol</label>
         <select id="regRole">
           <option value="voter" selected>Votante</option>
           <option value="auditor">Auditor</option>
           <option value="admin">Administrador</option>
         </select>
-        <button type="submit">Registrar</button>
+
+        <div class="biometric-section">
+          <h4>🔐 Verificación de Identidad</h4>
+          <p style="font-size: 0.8em; color: #666;">Debes validar tu identidad antes de registrarte.</p>
+          
+          <label style="margin-top:10px;">1. Foto DNI</label>
+          <input type="file" id="dniFile" accept="image/*" required onchange="previewImage(this, 'previewDni')">
+          
+          <label style="margin-top:10px;">2. Selfie Actual</label>
+          <input type="file" id="selfieFile" accept="image/*" capture="user" required onchange="previewImage(this, 'previewSelfie')">
+
+          <div class="preview-box">
+            <img id="previewDni" class="preview-img" alt="DNI Preview">
+            <img id="previewSelfie" class="preview-img" alt="Selfie Preview">
+          </div>
+
+          <button type="button" class="btn-verify" id="btnCheckBiometrics" onclick="checkBiometrics()">
+            🔍 Validar Identidad
+          </button>
+          
+          <p id="bioMsg" class="status-msg"></p>
+        </div>
+
+        <button type="submit" id="btnRegister" disabled>Registrar</button>
       </form>
+
       <p id="regMsg" class="msg"></p>
+      
       <textarea id="regPrivateKey" rows="8" placeholder="Clave privada generada (guárdela)"></textarea>
+      
       <p><a href="/static/index.html">¿Ya tienes cuenta? Inicia sesión</a></p>
     </div>
   </div>
 
   <script src="/static/js/util.js"></script>
   <script src="/static/js/auth.js"></script>
+
+  <script>
+    let isVerified = false;
+
+    // Función para mostrar las fotos en pequeño antes de enviar
+    function previewImage(input, imgId) {
+      if (input.files && input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const img = document.getElementById(imgId);
+          img.src = e.target.result;
+          img.style.display = 'block';
+        }
+        reader.readAsDataURL(input.files[0]);
+      }
+    }
+
+    async function checkBiometrics() {
+      const dniInput = document.getElementById('dniFile');
+      const selfieInput = document.getElementById('selfieFile');
+      const bioMsg = document.getElementById('bioMsg');
+      const btnCheck = document.getElementById('btnCheckBiometrics');
+      const btnRegister = document.getElementById('btnRegister');
+
+      if (!dniInput.files[0] || !selfieInput.files[0]) {
+        bioMsg.textContent = "⚠️ Sube ambas fotos primero.";
+        bioMsg.className = "status-msg error";
+        return;
+      }
+
+      // UI: Cargando
+      bioMsg.textContent = "⏳ Analizando rostros con IA...";
+      bioMsg.className = "status-msg";
+      btnCheck.disabled = true;
+      btnCheck.style.opacity = "0.7";
+
+      const formData = new FormData();
+      formData.append("dni_image", dniInput.files[0]);
+      formData.append("selfie_image", selfieInput.files[0]);
+
+      try {
+        const response = await fetch('/verify-identity', {
+          method: 'POST',
+          body: formData
+        });
+        
+        const data = await response.json();
+
+        if (response.ok && data.verified) {
+          // Éxito: Coinciden
+          const score = (data.confidence_score * 100).toFixed(1);
+          bioMsg.innerHTML = `✅ Identidad Verificada<br><small>Confianza: ${score}%</small>`;
+          bioMsg.className = "status-msg success";
+          
+          isVerified = true;
+          
+          // Habilitar el botón real de Registro
+          btnRegister.disabled = false;
+          btnRegister.innerText = "Registrar Cuenta";
+          
+          // Ocultar botón de validar y bloquear inputs para que no los cambien
+          btnCheck.style.display = "none";
+          dniInput.disabled = true;
+          selfieInput.disabled = true;
+
+        } else {
+          // Fallo: No coinciden
+          bioMsg.textContent = `❌ ${data.detail || data.message || "Las caras no coinciden"}`;
+          bioMsg.className = "status-msg error";
+          isVerified = false;
+          btnRegister.disabled = true;
+          btnCheck.disabled = false;
+          btnCheck.style.opacity = "1";
+        }
+
+      } catch (err) {
+        console.error(err);
+        bioMsg.textContent = "❌ Error conectando con el servidor";
+        bioMsg.className = "status-msg error";
+        btnCheck.disabled = false;
+        btnCheck.style.opacity = "1";
+      }
+    }
+
+    // Prevención extra: Interceptar submit si alguien intenta forzarlo
+    document.getElementById('registerForm').addEventListener('submit', function(e) {
+      if (!isVerified) {
+        e.preventDefault();
+        alert("Debes validar tu identidad biométrica primero.");
+      }
+      // Si está verificado, dejamos que auth.js haga su trabajo (generar llaves y registrar)
+    });
+  </script>
 </body>
 </html>
