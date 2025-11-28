@@ -2,15 +2,16 @@ from fastapi import FastAPI, Depends, HTTPException, status, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+from typing import List
 from typing import Optional
 import os
 import base64
 
-from .database import init_db, SessionLocal
+from backend.database import init_db, SessionLocal
 from .auth import router as auth_router, get_current_user
-from .models import User, Vote, AuditLog
-from .schemas import VoteRequest, LedgerPage, VoteLedgerItem
-from .crypto_utils import ensure_system_keys, load_system_public_key_pem, verify_signature, sha256_hex, decrypt_with_system_private
+from backend.models import User, Vote, AuditLog, Candidate
+from backend.schemas import CandidateOption,VoteRequest, LedgerPage, VoteLedgerItem
+from backend.crypto_utils import ensure_system_keys, load_system_public_key_pem, verify_signature, sha256_hex, decrypt_with_system_private
 
 
 app = FastAPI(title="Sistema de Votación Digital Segura")
@@ -26,8 +27,31 @@ def get_db():
 
 @app.on_event("startup")
 def on_startup():
+    # Inicializar DB y llaves del sistema
     init_db()
     ensure_system_keys()
+
+    # ---- INSERTAR CANDIDATOS SI LA TABLA ESTÁ VACÍA ----
+    #from database import SessionLocal
+    #from models import Candidate
+
+    db = SessionLocal()
+    try:
+        count = db.query(Candidate).count()
+        if count == 0:
+            initial_candidates = [
+                Candidate(name="Candidate A"),
+                Candidate(name="Candidate B"),
+                Candidate(name="Candidate C")
+            ]
+            db.add_all(initial_candidates)
+            db.commit()
+            print("✓ Candidatos iniciales agregados.")
+        else:
+            print("✓ Candidatos ya existen, no se insertan.")
+    finally:
+        db.close()
+
     # Servir frontend
     frontend_dir = os.path.join(os.getcwd(), "frontend")
     if os.path.isdir(frontend_dir):
@@ -40,6 +64,11 @@ def root():
     if os.path.exists(index_path):
         return FileResponse(index_path)
     return {"message": "API activa"}
+
+@app.get("/candidates", response_model=List[CandidateOption])
+def get_candidates(db: Session = Depends(get_db)):
+    candidates = db.query(Candidate).all()
+    return [CandidateOption(id=c.id, name=c.name) for c in candidates]
 
 
 app.include_router(auth_router)
@@ -120,6 +149,57 @@ def ledger(page: int = 1, page_size: int = 10, request: Request = None, db: Sess
         for v in items_q
     ]
     return LedgerPage(items=items, page=page, page_size=page_size, total=total)
+
+from fastapi import APIRouter
+from .crypto_utils import sha256_hex, decrypt_with_system_private
+import base64
+
+@app.get("/audit/verify-ledger")
+def verify_ledger(request: Request, db: Session = Depends(get_db)):
+    authorization = request.headers.get("authorization")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Token requerido")
+    token = authorization.split(" ", 1)[1]
+    current_user = get_current_user(token, db)
+    require_role(current_user, {"auditor", "admin"})
+
+    votes = db.query(Vote).order_by(Vote.id.asc()).all()
+
+    # Verificación de cadena
+    prev_hash = None
+    for v in votes:
+        computed = sha256_hex(base64.b64decode(v.encrypted_vote_b64))
+        if computed != v.vote_hash_hex:
+            return {"valid": False, "error": f"Hash incorrecto en voto ID {v.id}"}
+        if v.prev_hash_hex != prev_hash:
+            return {"valid": False, "error": f"Prev hash incorrecto en voto ID {v.id}"}
+        prev_hash = v.vote_hash_hex
+
+    return {"valid": True, "message": "La cadena de votos es consistente"}
+
+@app.get("/audit/results")
+def audit_results(request: Request, db: Session = Depends(get_db)):
+    authorization = request.headers.get("authorization")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Token requerido")
+    token = authorization.split(" ", 1)[1]
+    current_user = get_current_user(token, db)
+    require_role(current_user, {"auditor", "admin"})
+
+    votes = db.query(Vote).all()
+    counts = {}
+
+    for v in votes:
+        try:
+            plaintext = decrypt_with_system_private(base64.b64decode(v.encrypted_vote_b64)).decode()
+        except:
+            plaintext = "<invalid>"
+
+        counts[plaintext] = counts.get(plaintext, 0) + 1
+
+    return {"counts": counts}
+
+
 
 
 @app.get("/admin/results")

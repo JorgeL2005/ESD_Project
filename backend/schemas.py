@@ -67,3 +67,30 @@ class SQLQuery(BaseModel):
 class SQLResult(BaseModel):
     columns: List[str]
     rows: List[List[str | int | float | None]]
+    
+
+
+class VoteStatItem(BaseModel):
+    candidate: str
+    votes: int
+    percentage: float
+
+
+class VoteStats(BaseModel):
+    total: int
+    results: List[VoteStatItem]
+class CandidateOption(BaseModel):
+    id: int
+    name: str
+
+class VotePlainRequest(BaseModel):
+    candidate_id: int
+
+class ResultSummaryItem(BaseModel):
+    candidate: str
+    vote_count: int
+    percentage: float
+
+class ResultSummaryResponse(BaseModel):
+    total_votes: int
+    results: List[ResultSummaryItem]
