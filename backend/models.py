@@ -28,6 +28,11 @@ class Vote(Base):
     prev_hash_hex = Column(String(64), nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
 
+class Candidate(Base):
+    __tablename__ = "candidates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), unique=True, nullable=False)
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"

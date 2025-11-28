@@ -9,7 +9,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (!ensureRoleOrRedirect(['voter'])) return;
 
   // Cargar clave pública del sistema
-  let systemPubPem = null;
+  
+  // ========================
+// Cargar lista de candidatos
+// ========================
+async function loadCandidates() {
+  const resp = await fetch('/candidates'); 
+  const data = await resp.json();
+
+  const sel = document.getElementById('candidateSelect');
+  sel.innerHTML = "";
+
+  data.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;        // IMPORTANTE: Envías el ID
+    opt.textContent = c.name;
+    sel.appendChild(opt);
+  });
+}
+
+await loadCandidates();
+ let systemPubPem = null;
   try {
     const res = await fetch('/keys/system-public');
     const data = await res.json();
@@ -23,7 +43,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     voteMsg.textContent = '';
     const token = getToken();
     if (!token) { voteMsg.textContent = 'Debe iniciar sesión'; return; }
-    const vote = document.getElementById('voteInput').value;
+    const vote = document.getElementById('candidateSelect').value;
     const privPem = document.getElementById('userPrivatePem').value;
     if (!vote) { voteMsg.textContent = 'Ingrese su voto'; return; }
     if (!privPem) { voteMsg.textContent = 'Pegue su clave privada'; return; }

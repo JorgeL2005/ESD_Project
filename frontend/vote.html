@@ -14,7 +14,9 @@
       <label>Clave privada (PKCS8 PEM) del usuario</label>
       <textarea id="userPrivatePem" rows="6" placeholder="Pegue su clave privada PEM"></textarea>
       <label>Voto</label>
-      <input type="text" id="voteInput" placeholder="Ej: Candidato A" />
+      <label>Seleccione un candidato</label>
+      <select id="candidateSelect"></select>
+
       <button id="sendVote">Enviar voto cifrado y firmado</button>
       <p id="voteMsg" class="msg"></p>
     </div>
