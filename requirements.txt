@@ -6,3 +6,8 @@ python-jose[cryptography]==3.3.0
 cryptography==43.0.3
 python-multipart==0.0.9
 pydantic==2.9.2
+
+# python3 -m venv venv
+# source venv/bin/activate
+# pip install -r requirements.txt
+# python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
