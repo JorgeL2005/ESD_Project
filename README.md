@@ -1,229 +1,113 @@
-# Sistema de Votación Digital Segura — Informe de Entrega 1
+# Sistema de Votación Digital Segura 🗳️
 
-## Resumen Ejecutivo
-- Se implementó una aplicación Web que permite registrar, autenticar y emitir votos cifrados, con auditoría y administración segura.
-- La seguridad se basa en criptografía moderna: PBKDF2-SHA256 para contraseñas, RSA-OAEP para cifrado de votos, RSA-PSS para firmas, y un ledger encadenado con SHA-256.
-- Se incorporó autenticación basada en JWT con control de roles (`voter`, `auditor`, `admin`), registros de auditoría y herramientas administrativas (visualización de logs y visor SQL de solo lectura).
-- Se resolvieron problemas iniciales con `bcrypt` migrando a `PBKDF2-SHA256` y se corrigió el manejo del `Authorization` en los endpoints.
+Este proyecto implementa un sistema de votación electrónica diseñado para garantizar la confidencialidad, integridad y auditabilidad del proceso electoral. Utiliza criptografía asimétrica (RSA), un ledger inmutable basado en Proof of Work (PoW) y protocolos de anonimato mediante Ballot Tokens.
 
-## Contexto y Problema
-- Problema del mundo real: garantizar elecciones digitales seguras, preservando confidencialidad del voto, integridad, trazabilidad auditable y separación de funciones por rol.
-- El sistema busca un equilibrio entre anonimato del voto y verificabilidad del proceso, con capacidades administrativas y de auditoría.
+## 📄 Informe Final
+**La documentación completa, análisis de diseño y detalles de implementación se encuentran en el archivo:**
 
-## Objetivos y Alcance
-- Permitir que usuarios se registren y obtengan un par de claves RSA (privada para el usuario, pública almacenada en el sistema).
-- Emitir votos cifrados con la clave pública del sistema, firmados por el usuario para garantizar autenticidad.
-- Registrar un ledger encadenado por hashes para asegurar inmutabilidad y rastreo de orden de votos.
-- Proveer vistas y endpoints para auditores (ledger) y administradores (descifrado, logs, consultas SQL de solo lectura).
+👉 **`Entrega_Final_ESD.pdf`**
 
-## Arquitectura Técnica
-- Backend: FastAPI + SQLAlchemy + SQLite.
-- Frontend: HTML/CSS/JS estático servido por FastAPI (`frontend/*`).
-- Criptografía: `cryptography` (RSA-OAEP, RSA-PSS, SHA-256), `passlib` (PBKDF2-SHA256), `python-jose` (JWT HS256).
-- Almacenamiento: `data/app.db` (SQLite), claves del sistema en `keys/`, secretos en `secrets/`.
-- Certificados TLS opcionales en `certs/` para servir HTTPS local.
-
-## Estructura de Archivos Relevante
-- `backend/auth.py`: Registro, login, `/auth/me`, hashing y emisión de JWT.
-- `backend/main.py`: Rutas de voto, ledger, administración (resultados, logs, SQL) y archivos estáticos.
-- `backend/crypto_utils.py`: Utilitarios criptográficos, claves del sistema, SHA-256, descifrado RSA-OAEP, generación de par de claves de usuario.
-- `backend/models.py`: Modelos `User`, `Vote`, `AuditLog`.
-- `backend/schemas.py`: Esquemas Pydantic para requests/responses.
-- `frontend/*`: Vistas y lógica de cliente, incluyendo cifrado y firma antes de enviar votos.
-- `keys/system_private.pem`, `keys/system_public.pem`: Par RSA del sistema.
-- `secrets/jwt_secret.txt`: Secreto para firmar JWT HS256.
-- `certs/server.crt`, `certs/server.key`: Certificado y llave para HTTPS local.
-
-## Funcionalidades Implementadas
-- Registro (`POST /auth/register`):
-  - Valida rol (`voter`, `auditor`, `admin`).
-  - Genera par de claves RSA del usuario (privada devuelta al cliente, pública almacenada).
-  - Hashea contraseña con PBKDF2-SHA256.
-  - Registra `AuditLog` de la acción.
-- Login (`POST /auth/login`):
-  - Verifica credenciales con PBKDF2-SHA256.
-  - Emite JWT HS256 (expira a las 8 horas) con `sub` y `role`.
-  - Registra `AuditLog` de la acción.
-- Identidad (`GET /auth/me`):
-  - Retorna `username` y `role` según token.
-- Votación (`POST /vote`):
-  - Requiere rol `voter` y que el usuario no haya votado.
-  - Verifica firma RSA-PSS del usuario sobre el ciphertext.
-  - Almacena el voto cifrado (Base64), firma y hash SHA-256 del ciphertext, encadenado con el hash previo.
-  - Registra `AuditLog` y marca `has_voted`.
-- Ledger (`GET /ledger`):
-  - Paginado y visible para `auditor` y `admin`.
-  - Muestra `id`, `vote_hash_hex`, `prev_hash_hex`, `timestamp`.
-- Resultados admin (`GET /admin/results`):
-  - `admin` puede descifrar votos con la clave privada del sistema.
-  - Muestra texto plano, hash y timestamp.
-- Logs admin (`GET /admin/logs`):
-  - `admin` lista auditoría paginada (acción, IP, usuario, timestamp).
-- SQL admin (`POST /admin/sql`):
-  - `admin` ejecuta consultas `SELECT` seguras de solo lectura, retornando columnas y filas.
-
-## Seguridad Aplicada
-- Datos en reposo:
-  - Contraseñas con PBKDF2-SHA256 (310,000 iteraciones, sal aleatoria gestionada por `passlib`).
-  - Claves RSA del sistema almacenadas en `keys/` (sin contraseñas por simplicidad en esta entrega).
-  - Base de datos SQLite en `data/app.db`.
-  - Auditoría de acciones en `audit_logs`.
-- Datos en tránsito:
-  - Soporte para HTTPS local usando `certs/server.crt` y `certs/server.key` (opcional en desarrollo).
-- Gestión de accesos:
-  - Token JWT HS256 firmado con secreto en `secrets/jwt_secret.txt`.
-  - Control de roles en backend (`require_role`) y frontend (`ensureRoleOrRedirect`).
-  - Lectura explícita de `Authorization: Bearer` en endpoints sensibles.
-- Registro y trazabilidad:
-  - `AuditLog`: registra `register`, `login`, `vote_submitted` con IP y timestamp.
-  - Ledger encadenado con `prev_hash_hex` para detectar alteraciones.
-
-## Criptografía y Configuraciones
-- Contraseñas: `PBKDF2-SHA256` con `rounds=310000` (resuelve incompatibilidad de `bcrypt` y evita límite de 72 bytes).
-- Votos: Cifrado `RSA-OAEP` (MGF1 con SHA-256) con clave pública del sistema.
-- Firmas: `RSA-PSS` con SHA-256 y `saltLength=32` sobre el ciphertext.
-- Ledger: `SHA-256` del ciphertext, encadenado por `prev_hash_hex`.
-- JWT: `HS256`, expiración 8 horas.
-
-## Modelos y Datos
-- `User`: `username`, `password_hash`, `role`, `public_key_pem`, `has_voted`.
-- `Vote`: `encrypted_vote_b64`, `signature_b64`, `vote_hash_hex`, `prev_hash_hex`, `timestamp`.
-- `AuditLog`: `user_id`, `action`, `ip`, `timestamp`.
-
-## Flujo de Usuario
-- Registro: Usuario define rol, recibe su clave privada PEM para almacenar de forma segura.
-- Login: Obtiene JWT; el frontend consulta `/auth/me` y redirige según rol.
-- Votación (voter): Pega su clave privada; el frontend cifra con la clave pública del sistema y firma el ciphertext, envía a `/vote`.
-- Auditoría (auditor/admin): Visualiza ledger paginado.
-- Administración (admin): Descifra resultados, revisa logs y ejecuta consultas `SELECT` seguras.
-
-## Riesgos y Amenazas
-- Robo de clave privada del usuario (si la guarda de forma insegura).
-- Compromiso de `system_private.pem` (posible descifrado de todos los votos).
-- Exposición del `jwt_secret.txt`, permitiendo tokens forjados.
-- Ataques de inyección SQL: mitigados por restricción a `SELECT` y validaciones; aún requiere vigilancia.
-- Denegación de servicio por abuso de endpoints.
-- Fuga de la base de datos `app.db` (exposición de metadata y auditoría; los votos permanecen cifrados).
-
-## Plan de Respuesta ante Incidentes
-- Contención:
-  - Rotar `jwt_secret.txt` y revocar tokens activos.
-  - Invalidar y regenerar par de claves del sistema, emitir nuevo `system_public.pem` y migrar a nueva campaña.
-  - Bloquear cuentas comprometidas y forzar reseteo de contraseñas.
-- Erradicación:
-  - Analizar logs (`/admin/logs`) para vector de ataque.
-  - Aplicar parches y revisiones de configuración.
-- Recuperación:
-  - Restaurar `data/app.db` desde backups verificados.
-  - Revalidar integridad del ledger via hashes encadenados.
-- Comunicación:
-  - Notificar a afectados, documentar hallazgos y medidas.
-
-## Continuidad, Backups y DRP
-- Backups regulares de `data/app.db`, `keys/`, `secrets/` con cifrado del medio de almacenamiento.
-- Procedimiento de restauración probado en entorno de staging.
-- Separación de ambientes (desarrollo/producción) y rotación de llaves entre campañas electorales.
-
-## Estrategias de Uso Seguro de Datos
-- Políticas de manejo de claves privadas por parte del usuario (no compartir, almacenamiento cifrado local).
-- Procedimientos de alta/baja de roles y auditorías periódicas.
-- Concientización: material breve de buenas prácticas al registrarse.
-
-## Herramientas de Análisis Propuestas (no ejecutadas en esta entrega)
-- SAST: Bandit para Python.
-- Dependencias: `pip-audit` y `Safety`.
-- Análisis de contenedores (si aplica): Trivy.
-- Revisión de configuración TLS y encabezados HTTP (security headers).
-
-## Pruebas y Verificación
-- Verificación manual de flujos:
-  - Registro y recepción de clave privada.
-  - Login, lectura de rol con `/auth/me` y redirección.
-  - Emisión de voto, verificación de firma y registro en ledger.
-  - Visualización de ledger (auditor/admin) y resultados (admin, con descifrado).
-  - Administración: logs paginados y consultas `SELECT` en visor SQL.
-- Correcciones aplicadas:
-  - Migración de `bcrypt` a `PBKDF2-SHA256` por error `bcrypt.__about__` y límite de 72 bytes.
-  - Lectura correcta de `Authorization` en endpoints.
-  - Implementación de `/auth/me` para reconocimiento de rol y redirección en frontend.
-
-## Lecciones Aprendidas
-- Las dependencias criptográficas deben elegirse considerando compatibilidad de entorno (evitar bloqueos como `bcrypt`).
-- Es clave unificar la interpretación del token en backend y frontend para evitar incoherencias de sesión.
-- Entregar la clave privada al usuario habilita firmas fuertes, pero requiere UX y educación de seguridad para manejo adecuado.
-
-## Retrospectiva del Equipo
-- Fortalezas: diseño claro de roles y flujos, criptografía aplicada coherente, auditoría funcional.
-- Áreas de mejora: automatizar HTTPS en desarrollo, mejorar validaciones en visor SQL, guías de uso de claves privadas.
-- Próximos pasos: modularizar campañas, agregar autenticación reforzada y métricas.
-
-## Recomendaciones Futuras
-- Forzar HTTPS y HSTS en despliegue.
-- Rotación de claves del sistema por campaña y archivado de campañas cerradas.
-- 2FA/TOTP para `admin` y `auditor`.
-- Token refresh/rotación y lista de revocación.
-- Exportación del ledger (CSV/JSON) y verificación pública (Merkle tree).
-- Endpoints de resultados agregados (conteo por opción) sin descifrar globalmente, si el esquema lo permite.
-
-## Roadmap para Entrega 2
-- Módulo de campañas electorales (multievento) con aislamiento de claves y datos.
-- Panel resumen en `admin.html` (métricas y estado del sistema).
-- Exportaciones y verificación pública del ledger.
-- Endurecimiento del visor SQL (whitelist de tablas, límites adicionales).
-- Políticas de seguridad documentadas y material de concientización para usuarios.
-
-## Instrucciones de Ejecución
-- Instalar dependencias:
-  - `pip install -r requirements.txt`
-- Iniciar servidor HTTP:
-  - `uvicorn backend.main:app --host 0.0.0.0 --port 8000`
-- Iniciar servidor HTTPS (opcional, si existen `certs/server.crt` y `certs/server.key`):
-  - `uvicorn backend.main:app --host 0.0.0.0 --port 8000 --ssl-keyfile certs/server.key --ssl-certfile certs/server.crt`
-- Navegar a `http://localhost:8000/` (o `https://localhost:8000/`).
-
-## Referencias Internas
-- Clave pública del sistema: `GET /keys/system-public`.
-- Endpoints principales: `/auth/register`, `/auth/login`, `/auth/me`, `/vote`, `/ledger`, `/admin/results`, `/admin/logs`, `/admin/sql`.
+*(Este archivo se encuentra ubicado en la raíz de este directorio).*
 
 ---
 
-Este informe documenta el estado de la Entrega 1, cubriendo implementación, seguridad, riesgos y plan de mejora. 
+## 🚀 Instalación y Configuración
 
-## Entrega 2: Cambios y Justificación
+### Prerrequisitos
+- Python 3.13.9
 
-### Anonimato y anti-spoofing
-- Se añade emisión de token de boleta de un solo uso (`POST /auth/issue-ballot`), un JWT con `typ=ballot` y `jti` aleatorio, sin `sub`.
-- El token incluye (en base de datos) la clave pública del usuario para verificar la firma del voto sin cargar la identidad durante el envío.
-- `POST /vote` admite `X-Ballot-Token` y verifica la firma sobre el ciphertext con la clave pública asociada al token. Se marca el `jti` como usado (anti-replay) y se registra auditoría.
-- Modelo de anonimato: los votos se almacenan sin `user_id`. La emisión del token requiere autenticación, pero el acto de voto queda desacoplado del `sub` del JWT. Esto brinda unlinkability en almacenamiento y reduce el rastro de identidad en el momento de votar.
+### 1. Clonar el repositorio y preparar el entorno
+Navega a la carpeta del proyecto:
+```bash
+git clone https://github.com/JorgeL2005/ESD_Project.git
+cd ESD_Project
 
-### Ledger: integridad, no PoW
-- El ledger implementa una cadena de hashes (append-only hash chain) para detectar alteraciones. No es prueba de trabajo (PoW) ni pretende serlo.
-- Se añade endpoint de agregados `GET /results/summary` para evitar inspección voto a voto y facilitar auditoría a gran escala.
+# (Opcional pero recomendado) Crea un entorno virtual:
 
-### Funcionalidad y UX
-- Auditoría: `audit.js` ahora consume `results/summary` y renderiza gráficos agregados.
-- Votación: `vote.js` solicita automáticamente el token de boleta y lo usa en el envío del voto.
+# En Windows
+python -m venv venv
+venv\Scripts\activate
 
-### Backups y DRP
-- Se incorpora `scripts/backup.py` que crea respaldos de `data/`, `keys/` y `secrets/` con verificación SHA-256 y retención por timestamp.
+# En Mac/Linux
+python3 -m venv venv
+source venv/bin/activate
+```
 
-### Análisis de seguridad
-- Script `reports/generate_reports.ps1` para generar:
-  - Reporte SAST con Bandit (`reports/bandit.html`).
-  - Auditoría de dependencias con Safety (`reports/dependencies.txt`).
-  - Plantilla para ZAP Baseline Scan (`reports/zap.md`).
 
-### Endpoints nuevos
-- `POST /auth/issue-ballot`: emite token de boleta (votante autenticado, un uso, con expiración).
-- `GET /results/summary`: devuelve conteos y porcentajes por candidato (auditor/admin).
+### 2. Instalar dependencias
 
-### Consideraciones de seguridad
-- Anti-replay por `jti` de token y marca `used`.
-- Tolerancia a correlación temporal: documentar ventanas de emisión/uso y anonimizar timestamps en reportes públicos.
-- Recomendación: TLS obligatorio en despliegues reales y protección del almacenamiento de claves del sistema.
+Instala las librerías necesarias (FastAPI, SQLAlchemy, Cryptography, Passlib, etc.):
 
-### Cómo usar (resumen)
-- Iniciar sesión como votante y obtener token de boleta (`/auth/issue-ballot`).
-- Enviar el voto con encabezado `X-Ballot-Token` y firma del ciphertext.
-- Auditar resultados agregados en `GET /results/summary` (auditor/admin) y gráficos en el frontend.
+```bash
+pip install -r requirements.txt
+```
+
+-----
+
+## ⚙️ Ejecución del Proyecto
+
+### 1. Inicialización y Creación del Administrador
+
+Antes de iniciar el servidor, debes crear la cuenta del **Administrador (Autoridad Electoral)** si esta aún no ha sido creada. Esta cuenta es necesaria para registrar votantes.
+
+Ejecuta el script de creación:
+
+```bash
+python scripts/create_admin.py --username municipal_admin
+```
+
+### 2\. Iniciar el Servidor
+
+Ejecuta la aplicación utilizando Uvicorn desde la raíz del proyecto:
+
+```bash
+uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+El sistema estará disponible en: **`http://localhost:8000`**
+
+-----
+
+## 📖 Guía de Uso Rápida
+
+### Rol: Administrador (Autoridad Electoral)
+
+1.  Inicia sesión en `http://localhost:8000` con la cuenta creada en el paso anterior.
+2.  Navega al panel de administración (`/static/admin.html`).
+3.  **Registrar Votante:** Crea un nuevo usuario con rol `voter`.
+      - ⚠️ **Importante:** El sistema mostrará la **Clave Privada** del usuario una sola vez. Debes copiarla y entregarla al votante (archivo `.txt` o impresa). El sistema no guarda esta clave.
+4.  **Resultados:** Al finalizar, puede ver los resultados descifrados.
+
+### Rol: Votante
+
+1.  Inicia sesión con las credenciales proporcionadas por el administrador.
+2.  En la pantalla de voto (`/static/vote.html`), carga o pega tu **Clave Privada (Primary Key)**.
+3.  Selecciona tu candidato y envía el voto.
+      - *Nota:* El sistema usa un `Ballot Token` para anonimizar tu voto.
+
+### Rol: Auditor
+
+1.  Inicia sesión con una cuenta de rol `auditor` (creada por el admin).
+2.  Navega a la auditoría (`/static/audit.html`).
+3.  **Verificar Integridad:** Usa el botón para validar matemáticamente que la cadena de bloques (hashes) y el Proof of Work (PoW) son correctos y no han sido manipulados.
+
+-----
+
+## 🛡️ Características Técnicas
+
+  * **Backend:** FastAPI + SQLite.
+  * **Seguridad:** RSA-OAEP (Cifrado), RSA-PSS (Firmas), PBKDF2 (Hashing de contraseñas).
+  * **Integridad:** Ledger con Proof of Work (SHA-256 + Nonce).
+  * **Anonimato:** Desacoplamiento de identidad vía `X-Ballot-Token`.
+
+-----
+
+## 👥 Autores
+
+  * Jorge Alexander Leon Villareyes
+  * Diva Stewart Maquera Bobadilla
+  * Rodrigo Li Chumpitaz
+  * Camila Pamela Acosta Arostegui
+
+**Curso:** Ética y Seguridad de los Datos  
+**Universidad de Ingeniería y Tecnología (UTEC)**
