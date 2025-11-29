@@ -11,3 +11,10 @@ th, td { border: 1px solid #ddd; padding: 8px; font-size: 14px; }
 .msg { color: #0f172a; font-size: 13px; }
 .chart-container { display: flex; justify-content: center; align-items: center; margin: 16px auto; max-width: 520px; height: 360px; }
 .table-scroll { max-height: 60vh; overflow-y: auto; overflow-x: auto; }
+
+/* Modal styles for lost key popup */
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.modal-content { background: #fff; border-radius: 8px; padding: 18px; max-width: 520px; width: 92%; box-shadow: 0 6px 24px rgba(2,6,23,0.2); }
+.modal-content h3 { margin-top: 0; }
+.modal-content p { color: #0f172a; line-height: 1.4; }
+.notice { background:#fffbeb; border-left:4px solid #f59e0b; padding:8px; margin-top:8px; border-radius:4px; }

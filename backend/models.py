@@ -9,7 +9,7 @@ class User(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(150), unique=True, index=True, nullable=False)
-    password_hash = Column(String(255), nullable=False)
+    password_hash = Column(String(255), nullable=True)
     role = Column(String(50), nullable=False, default="voter")  # voter | auditor | admin
     public_key_pem = Column(Text, nullable=False)
     has_voted = Column(Boolean, default=False)
@@ -27,6 +27,8 @@ class Vote(Base):
     vote_hash_hex = Column(String(64), nullable=False, index=True)
     prev_hash_hex = Column(String(64), nullable=True)
     timestamp = Column(DateTime, default=datetime.utcnow)
+    nonce_int = Column(Integer, nullable=True)
+    pow_hash_hex = Column(String(64), nullable=True, index=True)
 
 class BallotToken(Base):
     __tablename__ = "ballot_tokens"
@@ -39,6 +41,15 @@ class BallotToken(Base):
     expires_at = Column(DateTime, nullable=True)
     used = Column(Boolean, default=False)
     used_at = Column(DateTime, nullable=True)
+
+
+class LoginChallenge(Base):
+    __tablename__ = "login_challenges"
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String(150), nullable=False)
+    challenge_b64 = Column(Text, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
 
 class Candidate(Base):
     __tablename__ = "candidates"

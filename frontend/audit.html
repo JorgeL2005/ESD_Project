@@ -3,12 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Auditoría de Ledger</title>
+  <title>Auditoría del Registro</title>
   <link rel="stylesheet" href="/static/css/styles.css" />
 </head>
 <body>
   <div class="container">
-    <h1>Ledger de Votos (Hashes)</h1>
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h1>Registro de Votos (resúmenes)</h1>
+      <div><button id="logoutBtn" type="button" onclick="logoutUser()">Cerrar sesión</button></div>
+    </div>
     <div class="card">
       <p>Usuario: <span id="userLabel"></span> | Rol: <span id="roleLabel"></span></p>
       <div>
@@ -27,7 +30,7 @@
       </div>
       <table>
         <thead>
-          <tr><th>ID</th><th>Hash</th><th>PrevHash</th><th>Timestamp</th></tr>
+          <tr><th>ID</th><th>Resumen</th><th>Hash anterior</th><th>Fecha/Hora</th></tr>
         </thead>
         <tbody id="ledgerBody"></tbody>
       </table>

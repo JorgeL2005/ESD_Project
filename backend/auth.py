@@ -1,14 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from jose import jwt
 from jose.exceptions import JWTError
 from datetime import datetime, timedelta
 from .database import SessionLocal
-from .models import User, AuditLog
+from .models import User, AuditLog, LoginChallenge
 from .schemas import RegisterRequest, RegisterResponse, LoginRequest, TokenResponse, BallotIssueResponse
 from .models import BallotToken
-from .crypto_utils import generate_user_keypair_pem
+from .crypto_utils import generate_user_keypair_pem, verify_signature
 import os
 
 
@@ -71,6 +72,18 @@ def create_ballot_token(jti: str, expires_minutes: int = BALLOT_TOKEN_EXPIRE_MIN
 
 @router.post("/register", response_model=RegisterResponse)
 def register(req: RegisterRequest, request: Request, db: Session = Depends(get_db)):
+    # Registro restringido: sólo administradores (municipalidad) pueden crear cuentas
+    authorization = request.headers.get("authorization")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token requerido para registrar usuarios")
+    token = authorization.split(" ", 1)[1]
+    try:
+        admin_user = get_current_user(token, db)
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido")
+    if admin_user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Solo administradores pueden registrar usuarios")
+
     existing = db.query(User).filter(User.username == req.username).first()
     if existing:
         raise HTTPException(status_code=400, detail="El usuario ya existe")
@@ -80,28 +93,81 @@ def register(req: RegisterRequest, request: Request, db: Session = Depends(get_d
 
     priv_pem, pub_pem = generate_user_keypair_pem()
 
+    # Password is required for registration
+    if not getattr(req, 'password', None):
+        raise HTTPException(status_code=400, detail="Password es requerida para crear el usuario")
+    pwd_hash = hash_password(req.password)
+
     user = User(
         username=req.username,
-        password_hash=hash_password(req.password),
+        password_hash=pwd_hash,
         role=req.role,
         public_key_pem=pub_pem,
     )
     db.add(user)
     db.flush()
-    db.add(AuditLog(user_id=user.id, action="register", ip=request.client.host))
+    db.add(AuditLog(user_id=admin_user.id, action=f"register_user:{user.username}", ip=request.client.host))
     db.commit()
 
     return RegisterResponse(message="Usuario registrado. Descargue su clave privada.", private_key_pem=priv_pem, username=user.username, role=user.role)
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post('/login', response_model=TokenResponse)
 def login(req: LoginRequest, request: Request, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == req.username).first()
-    if not user or not verify_password(req.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciales inválidas")
+    if not user:
+        raise HTTPException(status_code=404, detail='Usuario no encontrado')
+    if not user.password_hash:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Password no configurada')
+    if not verify_password(req.password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail='Password inválida')
 
     token = create_access_token({"sub": user.username, "role": user.role})
-    db.add(AuditLog(user_id=user.id, action="login", ip=request.client.host))
+    db.add(AuditLog(user_id=user.id, action='login_password', ip=request.client.host))
+    db.commit()
+    return TokenResponse(access_token=token)
+
+
+@router.get("/challenge")
+def get_challenge(username: str, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    # generar reto aleatorio y persistir
+    j = os.urandom(16)
+    challenge_b64 = (j).hex()
+    expires_at = datetime.utcnow() + timedelta(minutes=5)
+    lc = LoginChallenge(username=username, challenge_b64=challenge_b64, expires_at=expires_at)
+    db.add(lc)
+    db.commit()
+    return {"challenge_b64": challenge_b64, "expires_at": expires_at}
+
+
+@router.post("/login-sig", response_model=TokenResponse)
+def login_sig(payload: dict, request: Request, db: Session = Depends(get_db)):
+    username = payload.get("username")
+    signature_b64 = payload.get("signature_b64")
+    if not username or not signature_b64:
+        raise HTTPException(status_code=400, detail="Faltan parámetros")
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    # recuperar reto válido
+    lc = db.query(LoginChallenge).filter(LoginChallenge.username == username).order_by(LoginChallenge.id.desc()).first()
+    if not lc or lc.expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Reto no encontrado o expirado")
+
+    try:
+        sig = bytes.fromhex(signature_b64)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Firma en formato inválido (usar hex)")
+
+    challenge_bytes = bytes.fromhex(lc.challenge_b64)
+    if not verify_signature(user.public_key_pem, challenge_bytes, sig):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Firma inválida")
+
+    token = create_access_token({"sub": user.username, "role": user.role})
+    db.add(AuditLog(user_id=user.id, action="login_sig", ip=request.client.host))
     db.commit()
     return TokenResponse(access_token=token)
 
@@ -161,3 +227,26 @@ def issue_ballot(request: Request, db: Session = Depends(get_db)):
     db.commit()
 
     return BallotIssueResponse(ballot_token=ballot_jwt, jti=jti, expires_at=expires_at)
+
+
+@router.post('/save-credential', response_class=HTMLResponse)
+async def save_credential(request: Request):
+    # Endpoint mínimo para permitir un POST de formulario que algunos navegadores
+    # reconocen como un inicio de sesión y por eso pueden ofrecer guardar la credencial.
+    # No almacenamos nada: solo devolvemos una página sencilla para cerrar la pestaña.
+    try:
+        form = await request.form()
+        username = form.get('username', '')
+    except Exception:
+        username = ''
+    html = f"""
+    <!doctype html>
+    <html lang="es">
+    <head><meta charset="utf-8"><title>Guardar credencial</title></head>
+    <body>
+      <p>Se intentó guardar la credencial para: <strong>{username}</strong>.</p>
+      <p>Si el navegador ofreció guardar, confirme la operación. Puede cerrar esta pestaña.</p>
+    </body>
+    </html>
+    """
+    return HTMLResponse(content=html)

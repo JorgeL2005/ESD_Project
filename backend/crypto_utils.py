@@ -22,6 +22,34 @@ def sha256_hex(data: bytes) -> str:
     return digest.finalize().hex()
 
 
+def mine_pow(data: bytes, difficulty: int = 3, max_tries: int = 10_000_000) -> tuple[int, str]:
+    """Buscar un nonce tal que sha256(data || nonce_be) tenga `difficulty` ceros hexadecimales al comienzo.
+
+    Retorna (nonce, pow_hash_hex).
+    """
+    prefix = "0" * difficulty
+    nonce = 0
+    while nonce < max_tries:
+        # concatenar nonce en big-endian de 8 bytes
+        nbytes = nonce.to_bytes(8, "big")
+        h = sha256_hex(data + nbytes)
+        if h.startswith(prefix):
+            return nonce, h
+        nonce += 1
+    raise RuntimeError("PoW not found within max_tries")
+
+
+def verify_pow(data: bytes, nonce: int, difficulty: int = 3) -> bool:
+    if nonce is None:
+        return False
+    try:
+        nbytes = int(nonce).to_bytes(8, "big")
+    except Exception:
+        return False
+    h = sha256_hex(data + nbytes)
+    return h.startswith("0" * difficulty)
+
+
 def ensure_system_keys():
     if os.path.exists(SYSTEM_PRIV) and os.path.exists(SYSTEM_PUB):
         return

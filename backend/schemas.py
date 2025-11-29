@@ -5,8 +5,8 @@ from datetime import datetime
 
 class RegisterRequest(BaseModel):
     username: str
-    password: str
     role: Optional[str] = Field(default="voter")
+    password: str
 
 
 class RegisterResponse(BaseModel):
@@ -36,6 +36,8 @@ class VoteLedgerItem(BaseModel):
     vote_hash_hex: str
     prev_hash_hex: Optional[str]
     timestamp: datetime
+    nonce: Optional[int] = None
+    pow_hash_hex: Optional[str] = None
 
 
 class LedgerPage(BaseModel):

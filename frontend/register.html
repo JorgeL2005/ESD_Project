@@ -8,24 +8,15 @@
 </head>
 <body>
   <div class="container">
-    <h1>Registro de Usuario</h1>
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h1>Registro de Usuario</h1>
+      <div><button id="logoutBtn" type="button" onclick="logoutUser()">Cerrar sesión</button></div>
+    </div>
     <div class="card">
-      <form id="registerForm">
-        <label>Usuario</label>
-        <input type="text" id="regUsername" required />
-        <label>Contraseña</label>
-        <input type="password" id="regPassword" required />
-        <label>Rol</label>
-        <select id="regRole">
-          <option value="voter" selected>Votante</option>
-          <option value="auditor">Auditor</option>
-          <option value="admin">Administrador</option>
-        </select>
-        <button type="submit">Registrar</button>
-      </form>
-      <p id="regMsg" class="msg"></p>
-      <textarea id="regPrivateKey" rows="8" placeholder="Clave privada generada (guárdela)"></textarea>
-      <p><a href="/static/index.html">¿Ya tienes cuenta? Inicia sesión</a></p>
+      <h2>Registro controlado</h2>
+      <p>El registro de nuevas cuentas está controlado por la municipalidad y no está disponible públicamente desde este portal.</p>
+      <p>Si necesita una cuenta, por favor acuda a las oficinas municipales con su documento de identidad para solicitar que le creen una cuenta y se le entregue su PRIMARY KEY.</p>
+      <p><a href="/static/index.html">Volver al inicio</a></p>
     </div>
   </div>
 

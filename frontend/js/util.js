@@ -78,3 +78,35 @@ async function signData(privateKey, dataBytes) {
   const signature = await crypto.subtle.sign({ name: 'RSA-PSS', saltLength: 32 }, privateKey, dataBytes);
   return btoa(String.fromCharCode(...new Uint8Array(signature)));
 }
+
+// Logout helper: clear local storage and try to prevent silent credential access
+async function logoutUser() {
+  try {
+    console.debug('logoutUser: clearing local storage');
+    localStorage.removeItem('token');
+    localStorage.removeItem('username');
+    localStorage.removeItem('role');
+    // Intento de prevenir el acceso silencioso a credenciales (puede pedir al gestor de contraseñas olvidar el inicio de sesión silencioso)
+    if (navigator.credentials && navigator.credentials.preventSilentAccess) {
+      try { await navigator.credentials.preventSilentAccess(); } catch (e) { console.debug('preventSilentAccess failed', e); }
+    }
+  } catch (e) {
+    console.warn('Error clearing credentials', e);
+  }
+  // Redirect to login using replace to avoid leaving history entry
+  try { window.location.replace('/'); } catch (e) { window.location.href = '/'; }
+}
+
+// Attach logout button behavior if present on page
+document.addEventListener('DOMContentLoaded', () => {
+  const logoutBtn = document.getElementById('logoutBtn');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      logoutUser();
+    });
+  }
+});
+
+// Expose on window for inline onclick handlers and debugging
+try { window.logoutUser = logoutUser; } catch (e) { console.debug('Could not attach logoutUser to window', e); }

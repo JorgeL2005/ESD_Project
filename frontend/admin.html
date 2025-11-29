@@ -3,29 +3,56 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Resultados (Admin)</title>
+  <title>Resultados (Administrador)</title>
   <link rel="stylesheet" href="/static/css/styles.css" />
 </head>
 <body>
   <div class="container">
-    <h1>Resultados Descifrados</h1>
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h1>Resultados Descifrados</h1>
+      <div><button id="logoutBtn" type="button" onclick="logoutUser()">Cerrar sesión</button></div>
+    </div>
     <div class="card">
       <p>Usuario: <span id="userLabel"></span> | Rol: <span id="roleLabel"></span></p>
       <div style="margin-bottom:10px">
         <a href="/static/admin.html">Resultados</a> |
-        <a href="/static/admin_logs.html">Logs</a> |
-        <a href="/static/admin_sql.html">SQL Viewer</a>
+        <a href="/static/admin_logs.html">Registros</a> |
+        <a href="/static/admin_sql.html">Visor SQL</a>
       </div>
       <button id="loadResults">Cargar resultados</button>
       <div class="table-scroll">
       <table>
         <thead>
-          <tr><th>ID</th><th>Hash</th><th>Voto</th><th>Timestamp</th></tr>
+          <tr><th>ID</th><th>Resumen</th><th>Voto</th><th>Fecha/Hora</th></tr>
         </thead>
         <tbody id="resultsBody"></tbody>
       </table>
       </div>
       <p id="adminMsg" class="msg"></p>
+    </div>
+
+    <!-- Separate card for user creation (admin only) -->
+    <div class="card" style="margin-top:12px;">
+      <h3>Crear usuario</h3>
+      <form id="createUserForm">
+        <label>Nombre de usuario</label>
+        <input type="text" id="createUsername" required />
+        <label>Contraseña inicial (obligatoria)</label>
+        <input type="password" id="createPassword" required />
+        <label>Rol</label>
+        <select id="createRole">
+          <option value="voter" selected>Votante</option>
+          <option value="auditor">Auditor</option>
+          <option value="admin">Administrador</option>
+        </select>
+        <button type="submit">Crear usuario</button>
+      </form>
+      <p id="createMsg" class="msg"></p>
+      <textarea id="createdPrivateKey" rows="8" placeholder="Clave privada generada (entregar en persona)"></textarea>
+      <div style="margin-top:8px">
+        <button id="saveCredentialBtn" style="display:none;">Guardar credencial en el navegador</button>
+        <small class="msg">(Pulse el botón si desea que el navegador proponga guardar la PRIMARY KEY como credencial)</small>
+      </div>
     </div>
   </div>
   <script src="/static/js/util.js"></script>

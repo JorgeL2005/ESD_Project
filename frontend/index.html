@@ -3,23 +3,40 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Login | Votación Segura</title>
+  <title>Inicio de sesión | Votación Segura</title>
   <link rel="stylesheet" href="/static/css/styles.css" />
 </head>
 <body>
   <div class="container">
-    <h1>Sistema de Votación Digital Segura</h1>
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h1>Sistema de Votación Digital Segura</h1>
+      <div><button id="logoutBtn" type="button" onclick="logoutUser()">Cerrar sesión</button></div>
+    </div>
     <div class="card">
-      <h2>Login</h2>
-      <form id="loginForm">
+      <h2>Inicio de sesión</h2>
+      <form id="loginForm" autocomplete="on">
         <label>Usuario</label>
-        <input type="text" id="loginUsername" required />
+        <input type="text" id="loginUsername" autocomplete="username" required />
         <label>Contraseña</label>
-        <input type="password" id="loginPassword" required />
+        <input type="password" id="loginPrivateKey" autocomplete="current-password" placeholder="Su contraseña" required />
+        <div style="margin-top:6px">
+          <label style="font-weight:normal"><input type="checkbox" id="showPrivateKey"> Mostrar clave privada</label>
+        </div>
+        <p><a href="#" id="lostKeyLink">¿Perdiste tu PRIMARY KEY?</a></p>
+
+        <!-- Modal (hidden by default) -->
+        <div id="lostKeyModal" class="modal" role="dialog" aria-hidden="true" style="display:none;">
+          <div class="modal-content">
+            <h3>Recuperación de PRIMARY KEY</h3>
+            <p>Si pierde su clave privada deberá acercarse a la municipalidad para corroborar su identidad y obtener una nueva PRIMARY KEY. Este proceso es obligatorio y no hay recuperación remota.</p>
+            <p><strong>Qué llevar:</strong> documento de identidad válido y comprobante de domicilio. El personal municipal procederá con la verificación y la generación de una nueva clave.</p>
+            <div style="text-align:right; margin-top:12px;"><button id="closeLostKey">Cerrar</button></div>
+          </div>
+        </div>
         <button type="submit">Ingresar</button>
       </form>
       <p id="loginMsg" class="msg"></p>
-      <p><a href="/static/register.html">¿No tienes cuenta? Regístrate</a></p>
+      <p>Registro de cuentas: el registro de usuarios lo gestiona únicamente la municipalidad. Si no tiene cuenta, comuníquese con la municipalidad para solicitar su PRIMARY KEY.</p>
     </div>
   </div>
 

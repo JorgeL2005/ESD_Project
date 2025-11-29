@@ -12,7 +12,7 @@ from backend.database import init_db, SessionLocal
 from .auth import router as auth_router, get_current_user, SECRET_KEY, ALGORITHM
 from backend.models import User, Vote, AuditLog, Candidate, BallotToken
 from backend.schemas import CandidateOption,VoteRequest, LedgerPage, VoteLedgerItem, ResultSummaryResponse, ResultSummaryItem
-from backend.crypto_utils import ensure_system_keys, load_system_public_key_pem, verify_signature, sha256_hex, decrypt_with_system_private
+from backend.crypto_utils import ensure_system_keys, load_system_public_key_pem, verify_signature, sha256_hex, decrypt_with_system_private, mine_pow, verify_pow
 from jose import jwt
 
 
@@ -142,12 +142,21 @@ def submit_vote(
     vote_hash = sha256_hex(ciphertext)
     last = db.query(Vote).order_by(Vote.id.desc()).first()
     prev_hash = last.vote_hash_hex if last else None
+    # Ejecutar PoW (minado) sobre (ciphertext || prev_hash)
+    POW_DIFFICULTY = int(os.getenv("POW_DIFFICULTY", "3"))
+    pow_input = ciphertext + (prev_hash.encode() if prev_hash else b"")
+    try:
+        nonce, pow_hash = mine_pow(pow_input, POW_DIFFICULTY)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Error realizando PoW")
 
     record = Vote(
         encrypted_vote_b64=req.encrypted_vote_b64,
         signature_b64=req.signature_b64,
         vote_hash_hex=vote_hash,
         prev_hash_hex=prev_hash,
+        nonce_int=nonce,
+        pow_hash_hex=pow_hash,
     )
     db.add(record)
     if ballot_hdr:
@@ -180,7 +189,7 @@ def ledger(page: int = 1, page_size: int = 10, request: Request = None, db: Sess
         db.query(Vote).order_by(Vote.id.asc()).offset((page - 1) * page_size).limit(page_size).all()
     )
     items = [
-        VoteLedgerItem(id=v.id, vote_hash_hex=v.vote_hash_hex, prev_hash_hex=v.prev_hash_hex, timestamp=v.timestamp)
+        VoteLedgerItem(id=v.id, vote_hash_hex=v.vote_hash_hex, prev_hash_hex=v.prev_hash_hex, timestamp=v.timestamp, nonce=v.nonce_int, pow_hash_hex=v.pow_hash_hex)
         for v in items_q
     ]
     return LedgerPage(items=items, page=page, page_size=page_size, total=total)
@@ -208,6 +217,17 @@ def verify_ledger(request: Request, db: Session = Depends(get_db)):
             return {"valid": False, "error": f"Hash incorrecto en voto ID {v.id}"}
         if v.prev_hash_hex != prev_hash:
             return {"valid": False, "error": f"Prev hash incorrecto en voto ID {v.id}"}
+        # Verificar PoW si existe
+        pow_input = base64.b64decode(v.encrypted_vote_b64) + (v.prev_hash_hex.encode() if v.prev_hash_hex else b"")
+        if v.nonce_int is None or v.pow_hash_hex is None:
+            return {"valid": False, "error": f"Falta PoW en voto ID {v.id}"}
+        if not verify_pow(pow_input, v.nonce_int, int(os.getenv("POW_DIFFICULTY", "3"))):
+            return {"valid": False, "error": f"PoW inválido en voto ID {v.id}"}
+        # verificar que pow_hash_hex coincide
+        nbytes = int(v.nonce_int).to_bytes(8, "big")
+        recomputed_pow = sha256_hex(pow_input + nbytes)
+        if recomputed_pow != v.pow_hash_hex:
+            return {"valid": False, "error": f"PoW hash inconsistente en voto ID {v.id}"}
         prev_hash = v.vote_hash_hex
 
     return {"valid": True, "message": "La cadena de votos es consistente"}
@@ -223,16 +243,19 @@ def audit_results(request: Request, db: Session = Depends(get_db)):
 
     votes = db.query(Vote).all()
     counts = {}
+    invalid_count = 0
 
     for v in votes:
         try:
             plaintext = decrypt_with_system_private(base64.b64decode(v.encrypted_vote_b64)).decode()
-        except:
-            plaintext = "<invalid>"
+        except Exception:
+            # Omitir votos no descifrables de la distribución; contabilizar para auditoría
+            invalid_count += 1
+            continue
 
         counts[plaintext] = counts.get(plaintext, 0) + 1
 
-    return {"counts": counts}
+    return {"counts": counts, "invalid_count": invalid_count}
 
 @app.get("/results/summary", response_model=ResultSummaryResponse)
 def results_summary(request: Request, db: Session = Depends(get_db)):
@@ -249,7 +272,8 @@ def results_summary(request: Request, db: Session = Depends(get_db)):
         try:
             plaintext = decrypt_with_system_private(base64.b64decode(v.encrypted_vote_b64)).decode()
         except Exception:
-            plaintext = "<invalid>"
+            # Omitir votos no descifrables del resumen
+            continue
         counts[plaintext] = counts.get(plaintext, 0) + 1
 
     total = sum(counts.values())
@@ -281,6 +305,8 @@ def admin_results(request: Request, db: Session = Depends(get_db)):
         results.append({
             "id": v.id,
             "vote_hash_hex": v.vote_hash_hex,
+            "nonce": v.nonce_int,
+            "pow_hash_hex": v.pow_hash_hex,
             "plaintext": plaintext,
             "timestamp": v.timestamp.isoformat(),
         })

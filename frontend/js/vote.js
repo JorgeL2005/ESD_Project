@@ -39,14 +39,105 @@ await loadCandidates();
     return;
   }
 
+  // Intentar recuperar credenciales almacenadas (PEM) para autocompletar área de clave si está disponible
+  // Intentar recuperar credenciales almacenadas (PEM) para autocompletar área de clave si está disponible.
+  // If found, inject the textarea into the DOM; if not found, do not show any UI for the key.
+  (async () => {
+    try {
+      if (navigator.credentials && navigator.credentials.get) {
+        const cred = await navigator.credentials.get({ password: true, mediation: 'optional' });
+        if (cred && cred.type === 'password') {
+          const kc = document.getElementById('keyContainer');
+          if (kc) {
+            // create textarea only when credential is available
+            const ta = document.createElement('textarea');
+            ta.id = 'userPrivatePem';
+            ta.rows = 6;
+            ta.placeholder = '-----BEGIN PRIVATE KEY-----\n...';
+            ta.value = cred.password || '';
+            kc.appendChild(ta);
+            kc.style.display = 'block';
+          }
+        }
+      }
+    } catch (e) {
+      console.debug('Credential retrieval not available in vote page', e);
+    }
+  })();
+
+  // Allow user to paste their PRIMARY KEY manually if they choose
+  const pasteBtn = document.getElementById('pasteKeyBtn');
+  if (pasteBtn) {
+    pasteBtn.addEventListener('click', () => {
+      const kc = document.getElementById('keyContainer');
+      if (!kc) return;
+      let ta = document.getElementById('userPrivatePem');
+      if (!ta) {
+        ta = document.createElement('textarea');
+        ta.id = 'userPrivatePem';
+        ta.rows = 6;
+        ta.placeholder = 'Pegue su PRIMARY KEY (PKCS8 PEM) aquí';
+        kc.appendChild(ta);
+      }
+      // toggle visibility
+      kc.style.display = (kc.style.display === 'block') ? 'none' : 'block';
+      if (kc.style.display === 'block') ta.focus();
+    });
+  }
+
+  // File upload: single file
+  const uploadFileBtn = document.getElementById('uploadFileBtn');
+  const uploadKeyInput = document.getElementById('uploadKeyInput');
+  if (uploadFileBtn && uploadKeyInput) {
+    uploadFileBtn.addEventListener('click', () => uploadKeyInput.click());
+    uploadKeyInput.addEventListener('change', (ev) => {
+      const f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = String(reader.result || '');
+        handlePemText(text);
+      };
+      reader.readAsText(f, 'utf-8');
+    });
+  }
+
+  // Directory upload removed — keep single-file upload for compatibility
+
+  function handlePemText(text) {
+    if (!text || typeof text !== 'string') return;
+    const begin = '-----BEGIN PRIVATE KEY-----';
+    const end = '-----END PRIVATE KEY-----';
+    if (!text.includes(begin) || !text.includes(end)) {
+      voteMsg.textContent = 'El archivo no contiene una clave privada en formato PEM válido.';
+      return;
+    }
+    // Ensure textarea exists and populate it
+    const kc = document.getElementById('keyContainer');
+    if (!kc) return;
+    let ta = document.getElementById('userPrivatePem');
+    if (!ta) {
+      ta = document.createElement('textarea');
+      ta.id = 'userPrivatePem';
+      ta.rows = 6;
+      ta.placeholder = '-----BEGIN PRIVATE KEY-----\n...';
+      kc.appendChild(ta);
+    }
+    ta.value = text.trim();
+    kc.style.display = 'block';
+    ta.focus();
+    voteMsg.textContent = '';
+  }
+
   btn.addEventListener('click', async () => {
     voteMsg.textContent = '';
     const token = getToken();
     if (!token) { voteMsg.textContent = 'Debe iniciar sesión'; return; }
     const vote = document.getElementById('candidateSelect').value;
-    const privPem = document.getElementById('userPrivatePem').value;
+    const privPemEl = document.getElementById('userPrivatePem');
+    const privPem = privPemEl ? privPemEl.value.trim() : '';
     if (!vote) { voteMsg.textContent = 'Ingrese su voto'; return; }
-    if (!privPem) { voteMsg.textContent = 'Pegue su clave privada'; return; }
+    if (!privPem) { voteMsg.textContent = "Haga clic en 'Mostrar / Ingresar clave privada' y pegue o cargue su PRIMARY KEY para firmar el voto."; return; }
 
     try {
       // Solicitar token de boleta de un solo uso
