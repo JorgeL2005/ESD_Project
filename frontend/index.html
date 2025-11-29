@@ -3,27 +3,168 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Login | Votación Segura</title>
+  <title>Registro | Votación Segura</title>
   <link rel="stylesheet" href="/static/css/styles.css" />
+  <style>
+    .biometric-section {
+      background-color: #f8f9fa;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 15px 0;
+      border: 1px solid #ddd;
+    }
+    .preview-img {
+      width: 120px;
+      height: 120px;
+      object-fit: cover;
+      border-radius: 50%; /* Hacemos la selfie redonda */
+      border: 3px solid #17a2b8;
+      display: none;
+      margin: 10px auto;
+      display: block;
+      background: #eee;
+    }
+    .status-msg { font-weight: bold; text-align: center; margin-top:10px; display:block;}
+    .success { color: #28a745; }
+    .error { color: #dc3545; }
+    button:disabled { background-color: #ccc !important; cursor: not-allowed; }
+  </style>
 </head>
 <body>
   <div class="container">
-    <h1>Sistema de Votación Digital Segura</h1>
+    <h1>Alta de Usuario</h1>
     <div class="card">
-      <h2>Login</h2>
-      <form id="loginForm">
-        <label>Usuario</label>
-        <input type="text" id="loginUsername" required />
+      <form id="registerForm">
+        
+        <label>Nombre de Usuario (ID)</label>
+        <input type="text" id="regUsername" required placeholder="Ej. jperez" />
+        
         <label>Contraseña</label>
-        <input type="password" id="loginPassword" required />
-        <button type="submit">Ingresar</button>
+        <input type="password" id="regPassword" required />
+        
+        <label>Rol</label>
+        <select id="regRole">
+          <option value="voter" selected>Votante</option>
+        </select>
+
+        <div class="biometric-section">
+          <h4>🔐 Validación Biométrica</h4>
+          <p style="font-size:0.8em; color:#555;">
+            Tomate una selfie para verificar que eres el titular de la cuenta 
+            <b><span id="displayUser">...</span></b>.
+          </p>
+
+          <label>Tu Selfie Actual</label>
+          <input type="file" id="selfieFile" accept="image/*" capture="user" required onchange="previewSelfie(this)">
+          
+          <img id="previewImg" class="preview-img" alt="">
+
+          <button type="button" id="btnCheckBiometrics" onclick="checkBiometrics()" style="background:#17a2b8; margin-top:10px; width:100%;">
+            🔍 Validar contra Base de Datos
+          </button>
+          
+          <span id="bioMsg" class="status-msg"></span>
+        </div>
+
+        <button type="submit" id="btnRegister" disabled>Crear Cuenta</button>
       </form>
-      <p id="loginMsg" class="msg"></p>
-      <p><a href="/static/register.html">¿No tienes cuenta? Regístrate</a></p>
+
+      <p id="regMsg" class="msg"></p>
+      <textarea id="regPrivateKey" rows="5" placeholder="Aquí aparecerá tu llave privada..." readonly></textarea>
+      <p><a href="/static/index.html">Volver al Login</a></p>
     </div>
   </div>
 
   <script src="/static/js/util.js"></script>
   <script src="/static/js/auth.js"></script>
+
+  <script>
+    let isVerified = false;
+
+    // Actualiza el texto del usuario en tiempo real para feedback visual
+    document.getElementById('regUsername').addEventListener('input', function(e) {
+        document.getElementById('displayUser').innerText = e.target.value || "...";
+        // Si cambia el usuario, invalidamos la verificación anterior
+        if(isVerified) {
+            isVerified = false;
+            document.getElementById('btnRegister').disabled = true;
+            document.getElementById('bioMsg').innerText = "⚠️ Usuario modificado. Valida de nuevo.";
+            document.getElementById('bioMsg').className = "status-msg error";
+            document.getElementById('btnCheckBiometrics').style.display = "block";
+        }
+    });
+
+    function previewSelfie(input) {
+        if (input.files && input.files[0]) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('previewImg').src = e.target.result;
+            }
+            reader.readAsDataURL(input.files[0]);
+        }
+    }
+
+    async function checkBiometrics() {
+        const username = document.getElementById('regUsername').value.trim();
+        const selfieInput = document.getElementById('selfieFile');
+        const bioMsg = document.getElementById('bioMsg');
+        const btnCheck = document.getElementById('btnCheckBiometrics');
+
+        if (!username) {
+            alert("Por favor escribe tu Nombre de Usuario primero.");
+            return;
+        }
+        if (!selfieInput.files[0]) {
+            alert("Por favor tómate la selfie.");
+            return;
+        }
+
+        bioMsg.innerText = "⏳ Buscando tu expediente y comparando...";
+        bioMsg.className = "status-msg";
+        btnCheck.disabled = true;
+
+        const formData = new FormData();
+        formData.append("username", username);
+        formData.append("selfie_image", selfieInput.files[0]);
+        try {
+            const response = await fetch('/verify-identity', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            if (response.ok && data.verified) {
+                bioMsg.innerHTML = `✅ Identidad Confirmada (${(data.confidence_score*100).toFixed(0)}%)`;
+                bioMsg.className = "status-msg success";
+                isVerified = true;
+                
+                document.getElementById('btnRegister').disabled = false;
+                btnCheck.style.display = 'none'; // Ocultar botón validar
+                
+                // Bloquear inputs
+                document.getElementById('regUsername').readOnly = true;
+                selfieInput.disabled = true;
+
+            } else {
+                bioMsg.innerText = `❌ ${data.detail || data.message || "Error de validación"}`;
+                bioMsg.className = "status-msg error";
+                btnCheck.disabled = false;
+            }
+        } catch (err) {
+            console.error(err);
+            bioMsg.innerText = "❌ Error de conexión";
+            bioMsg.className = "status-msg error";
+            btnCheck.disabled = false;
+        }
+    }
+
+    // Bloqueo final del submit
+    document.getElementById('registerForm').addEventListener('submit', function(e) {
+        if (!isVerified) {
+            e.preventDefault();
+            alert("Identidad no verificada.");
+        }
+    });
+  </script>
 </body>
 </html>

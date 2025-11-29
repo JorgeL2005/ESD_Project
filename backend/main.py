@@ -1,5 +1,5 @@
 # Asegúrate de incluir 'File' y 'UploadFile' en esta línea
-from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, status, Request, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -346,50 +346,94 @@ def admin_sql(req: SQLQuery, request: Request, db: Session = Depends(get_db)):
 
 
 
+import os # <--- Necesario para buscar archivos
+
+# Configuración: Carpeta donde guardas los DNIs pre-cargados
+DNI_DB_PATH = "dni_db"  # Asegúrate de crear esta carpeta en tu proyecto
+
+
 @app.post("/verify-identity")
 def verify_identity(
-    dni_image: UploadFile = File(...),
+    username: str = Form(...),
     selfie_image: UploadFile = File(...)
 ):
+    print(f"\n--- [DEBUG] Inicio de Verificación de Identidad ---")
+    print(f"[DEBUG] Usuario recibido: '{username}'")
+    # imprimir directorio actual
+    print(f"[DEBUG] Directorio actual: {os.getcwd()}")
+    print(f"[DEBUG] Archivo recibido: '{selfie_image.filename}' content_type: {selfie_image.content_type}")
+
     try:
-        dni_bytes = dni_image.file.read()
-        selfie_bytes = selfie_image.file.read()
+        # 1. Buscar el DNI
+        dni_filename = f"{username}.jpeg"
+        dni_path = os.path.join(DNI_DB_PATH, dni_filename)
+        
+        print(f"[DEBUG] Buscando DNI en: {dni_path}")
 
-        nparr_dni = np.frombuffer(dni_bytes, np.uint8)
-        nparr_selfie = np.frombuffer(selfie_bytes, np.uint8)
+        if not os.path.exists(dni_path):
+            print(f"[DEBUG] No encontrado como .jpeg. Probando .png...")
+            dni_path = os.path.join(DNI_DB_PATH, f"{username}.png")
+            if not os.path.exists(dni_path):
+                print(f"[ERROR] DNI no encontrado para {username}")
+                raise HTTPException(
+                    status_code=404, 
+                    detail=f"No se encontró un DNI registrado para el usuario '{username}'."
+                )
+        
+        print(f"[DEBUG] DNI encontrado en: {dni_path}")
 
-        img_dni = cv2.imdecode(nparr_dni, cv2.IMREAD_COLOR)
-        img_selfie = cv2.imdecode(nparr_selfie, cv2.IMREAD_COLOR)
+        # 2. Procesar la Selfie
+        try:
+            print(f"[DEBUG] Leyendo bytes de la selfie...")
+            selfie_bytes = selfie_image.file.read()
+            print(f"[DEBUG] Bytes leídos: {len(selfie_bytes)} bytes")
+            
+            nparr_selfie = np.frombuffer(selfie_bytes, np.uint8)
+            img_selfie = cv2.imdecode(nparr_selfie, cv2.IMREAD_COLOR)
 
-        # Validación básica: verificar que las imágenes se decodificaron bien
-        if img_dni is None or img_selfie is None:
-            raise HTTPException(status_code=400, detail="No se pudo procesar una de las imágenes. Asegúrate de que sean JPG o PNG válidos.")
+            if img_selfie is None:
+                print(f"[ERROR] cv2.imdecode devolvió None (imagen corrupta o formato inválido)")
+                raise HTTPException(status_code=400, detail="La selfie enviada no es válida o está corrupta.")
+            
+            print(f"[DEBUG] Selfie decodificada correctamente. Shape: {img_selfie.shape}")
 
-        # 3. Usar DeepFace para verificar
-        # enforce_detection=False permite que corra aunque la cara no sea perfecta, 
-        # pero es mejor ponerlo en True para seguridad (exige encontrar cara).
-        # model_name="VGG-Face" es el modelo por defecto, balanceado y bueno.
-        result = DeepFace.verify(
-            img1_path=img_dni, 
-            img2_path=img_selfie, 
-            model_name="VGG-Face",
-            enforce_detection=True 
-        )
+        except Exception as e:
+            print(f"[ERROR] Falló el procesamiento de imagen: {str(e)}")
+            raise HTTPException(status_code=400, detail="Error leyendo el archivo de imagen.")
 
-        # 4. Interpretar el resultado
-        # DeepFace devuelve un diccionario con 'verified': True/False
+        # 3. Comparar con DeepFace
+        print(f"[DEBUG] Iniciando DeepFace.verify...")
+        try:
+            result = DeepFace.verify(
+                img1_path=dni_path,
+                img2_path=img_selfie,
+                model_name="VGG-Face",
+                enforce_detection=True
+            )
+            print(f"[DEBUG] Resultado DeepFace: {result}")
+        except ValueError as ve:
+            print(f"[ERROR] DeepFace ValueError (probablemente no detectó cara): {ve}")
+            raise HTTPException(status_code=400, detail="No se detectó rostro en la selfie o en el DNI guardado.")
+        except Exception as deep_e:
+            print(f"[ERROR] Error interno de DeepFace: {deep_e}")
+            raise HTTPException(status_code=500, detail=f"Error en motor biométrico: {str(deep_e)}")
+
         is_match = result["verified"]
-        distance = result["distance"] # Cuanto más bajo, más parecidos
+        distance = result["distance"]
+
+        print(f"[DEBUG] Fin del proceso. Match: {is_match}, Distancia: {distance}")
+        print(f"--- [DEBUG] Fin ---\n")
 
         return {
             "verified": is_match,
-            "confidence_score": round(1 - distance, 4), # Score aproximado de similitud
-            "message": "Identidad verificada" if is_match else "Las fotos no coinciden"
+            "confidence_score": round(1 - distance, 4),
+            "message": "Identidad verificada exitosamente" if is_match else "Tu cara no coincide con el DNI registrado."
         }
 
-    except ValueError as ve:
-        # DeepFace lanza ValueError si no encuentra caras y enforce_detection=True
-        raise HTTPException(status_code=400, detail="No se detectó ningún rostro en una de las imágenes.")
+    except HTTPException as he:
+        # Re-lanzar excepciones HTTP controladas
+        print(f"[HTTP EXCEPTION] {he.detail}")
+        raise he
     except Exception as e:
-        print(f"Error interno: {e}") # Útil para ver el error en la consola
-        raise HTTPException(status_code=500, detail="Error procesando la verificación biométrica")
+        print(f"[CRITICAL ERROR] Excepción no controlada: {e}")
+        raise HTTPException(status_code=500, detail="Error interno en el servidor de biometría.")
